@@ -326,6 +326,7 @@ function PopularSection() {
   useEffect(() => {
     getEvents({ sort: 'hotness', max: 4 })
       .then(setEvents)
+      .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
 

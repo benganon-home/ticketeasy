@@ -57,10 +57,10 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(true);
 
   useEffect(() => {
-    seedEvents();
+    seedEvents().catch(() => {});
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        const profile = await getOrCreateUser(firebaseUser);
+        const profile = await getOrCreateUser(firebaseUser).catch(() => ({}));
         setUser({
           id: firebaseUser.uid,
           name: firebaseUser.displayName || profile.name || firebaseUser.email?.split('@')[0] || 'משתמש',
