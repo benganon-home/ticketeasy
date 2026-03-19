@@ -1,14 +1,22 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { Upload, Camera, Shield, AlertTriangle, CheckCircle, Tag, Hash, Info, X } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Upload, Camera, Shield, AlertTriangle, CheckCircle, Tag, Info, Search } from 'lucide-react';
 import { categories, formatPrice } from '../../data/mockData';
+import { createListing } from '../../services/listings';
+import { searchEvents } from '../../services/events';
+import { useAuth } from '../../App';
 
 export default function SellPage() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [file, setFile] = useState(null);
-  const [form, setForm] = useState({ event: '', category: '', originalPrice: '', askPrice: '', section: '', row: '', seats: '', quantity: '1' });
+  const [form, setForm] = useState({ event: '', eventId: '', category: '', originalPrice: '', askPrice: '', section: '', row: '', seats: '', quantity: '1' });
   const [ocrDone, setOcrDone] = useState(false);
   const [duplicateCheck, setDuplicateCheck] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [eventSuggestions, setEventSuggestions] = useState([]);
+  const [searchingEvents, setSearchingEvents] = useState(false);
 
   const maxPrice = form.originalPrice ? Math.round(form.originalPrice * 1.2) : 0;
   const priceValid = form.askPrice && form.originalPrice && +form.askPrice <= maxPrice;
@@ -26,6 +34,47 @@ export default function SellPage() {
     if (f) { setFile(f); simulateOCR(); }
   };
 
+  const handleEventSearch = async (val) => {
+    setForm(f => ({ ...f, event: val, eventId: '' }));
+    if (val.length < 2) { setEventSuggestions([]); return; }
+    setSearchingEvents(true);
+    const results = await searchEvents(val);
+    setEventSuggestions(results.slice(0, 5));
+    setSearchingEvents(false);
+  };
+
+  const handleSelectEvent = (ev) => {
+    setForm(f => ({ ...f, event: ev.title, eventId: ev.id, category: ev.category, originalPrice: String(ev.originalPrice || ev.minPrice || '') }));
+    setEventSuggestions([]);
+  };
+
+  const handlePublish = async () => {
+    if (!priceValid || !form.event || !user) return;
+    setSaving(true);
+    try {
+      await createListing({
+        eventTitle: form.event,
+        eventId: form.eventId || null,
+        category: form.category,
+        originalPrice: +form.originalPrice,
+        price: +form.askPrice,
+        section: form.section,
+        row: form.row,
+        seats: form.seats,
+        quantity: +form.quantity,
+        sellerId: user.id,
+        sellerName: user.name,
+        sellerRating: user.rating || null,
+        sellerPhotoURL: user.photoURL || null,
+      });
+      setStep(3);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (step === 3) {
     return (
       <div className="text-center py-8 animate-fade-in">
@@ -38,7 +87,7 @@ export default function SellPage() {
           {[
             { icon: '✅', text: 'כרטיס אומת ונעול במערכת' },
             { icon: '🔒', text: 'לא ניתן להעלות כרטיס זהה שוב' },
-            { icon: '📱', text: 'תקבל התראת SMS/WhatsApp על פניות' },
+            { icon: '📱', text: 'תקבל התראה כשמישהו מתעניין' },
             { icon: '💰', text: 'כסף ישוחרר רק אחרי אימות הכרטיס' },
           ].map(({ icon, text }) => (
             <div key={text} className="flex items-center gap-2 py-2 border-b border-dark-50 dark:border-dark-600 last:border-0">
@@ -59,7 +108,6 @@ export default function SellPage() {
       <h1 className="font-800 text-xl mb-1">מכירת כרטיס</h1>
       <p className="text-sm text-dark-300 dark:text-dark-400 mb-6">העלה את הכרטיס ואנחנו נטפל בשאר</p>
 
-      {/* Steps */}
       <div className="flex items-center gap-2 mb-6">
         {['העלאה', 'פרטים'].map((label, i) => (
           <React.Fragment key={label}>
@@ -101,9 +149,7 @@ export default function SellPage() {
                 <CheckCircle className="w-10 h-10 text-success-500 mx-auto mb-3" />
                 <p className="font-600 text-sm text-success-600 dark:text-success-400 mb-1">הכרטיס אומת!</p>
                 <p className="text-xs text-dark-300">{file.name}</p>
-                <button onClick={() => { setFile(null); setOcrDone(false); }} className="text-xs text-primary-500 mt-2 underline">
-                  החלף קובץ
-                </button>
+                <button onClick={() => { setFile(null); setOcrDone(false); }} className="text-xs text-primary-500 mt-2 underline">החלף קובץ</button>
               </div>
             )}
           </div>
@@ -132,13 +178,36 @@ export default function SellPage() {
         <div className="animate-fade-in">
           <div className="card-flat mb-4">
             <h3 className="font-600 text-sm mb-3 flex items-center gap-2">
-              <Info className="w-4 h-4 text-primary-500" />
-              פרטים שזוהו אוטומטית
+              <Info className="w-4 h-4 text-primary-500" />פרטים שזוהו אוטומטית
             </h3>
             <div className="space-y-3">
-              <div>
+              <div className="relative">
                 <label className="text-xs font-600 text-dark-400 block mb-1">אירוע</label>
-                <input type="text" value={form.event} onChange={(e) => setForm({...form, event: e.target.value})} className="input-field text-sm" />
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={form.event}
+                    onChange={(e) => handleEventSearch(e.target.value)}
+                    className="input-field text-sm pl-8"
+                  />
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-dark-300" />
+                </div>
+                {form.eventId && (
+                  <span className="text-[10px] text-success-500 mt-0.5 block">✓ מקושר לאירוע במערכת</span>
+                )}
+                {eventSuggestions.length > 0 && (
+                  <div className="absolute z-10 w-full mt-1 bg-white dark:bg-dark-800 rounded-xl shadow-lg border border-dark-100 dark:border-dark-600 overflow-hidden">
+                    {eventSuggestions.map((ev) => (
+                      <button
+                        key={ev.id}
+                        onClick={() => handleSelectEvent(ev)}
+                        className="w-full text-right px-3 py-2 text-sm hover:bg-dark-50 dark:hover:bg-dark-700 border-b border-dark-50 dark:border-dark-700 last:border-0"
+                      >
+                        {ev.title}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
               <div>
                 <label className="text-xs font-600 text-dark-400 block mb-1">קטגוריה</label>
@@ -155,7 +224,8 @@ export default function SellPage() {
                 <div><label className="text-xs font-600 text-dark-400 block mb-1">מושבים</label>
                   <input type="text" value={form.seats} onChange={(e) => setForm({...form, seats: e.target.value})} className="input-field text-sm" /></div>
               </div>
-              <div><label className="text-xs font-600 text-dark-400 block mb-1">כמות</label>
+              <div>
+                <label className="text-xs font-600 text-dark-400 block mb-1">כמות</label>
                 <select value={form.quantity} onChange={(e) => setForm({...form, quantity: e.target.value})} className="input-field text-sm">
                   {[1,2,3,4].map(n => <option key={n} value={n}>{n}</option>)}
                 </select>
@@ -166,8 +236,7 @@ export default function SellPage() {
 
           <div className="card-flat mb-4">
             <h3 className="font-600 text-sm mb-3 flex items-center gap-2">
-              <Tag className="w-4 h-4 text-primary-500" />
-              תמחור
+              <Tag className="w-4 h-4 text-primary-500" />תמחור
             </h3>
             <div className="space-y-3">
               <div>
@@ -203,8 +272,8 @@ export default function SellPage() {
 
           <div className="flex gap-3">
             <button onClick={() => setStep(1)} className="btn-secondary flex-1">חזרה</button>
-            <button onClick={() => setStep(3)} disabled={!priceValid || !form.event} className="btn-primary flex-1 disabled:opacity-40">
-              פרסם כרטיס
+            <button onClick={handlePublish} disabled={!priceValid || !form.event || saving} className="btn-primary flex-1 disabled:opacity-40">
+              {saving ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto" /> : 'פרסם כרטיס'}
             </button>
           </div>
         </div>

@@ -2,6 +2,8 @@ import React, { useState, useEffect, createContext, useContext } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from './firebase';
+import { getOrCreateUser } from './services/users';
+import { seedEvents } from './services/seed';
 import Header from './components/layout/Header';
 import BottomNav from './components/layout/BottomNav';
 import HomePage from './components/home/HomePage';
@@ -55,15 +57,20 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+    seedEvents();
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
+        const profile = await getOrCreateUser(firebaseUser);
         setUser({
           id: firebaseUser.uid,
-          name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'משתמש',
+          name: firebaseUser.displayName || profile.name || firebaseUser.email?.split('@')[0] || 'משתמש',
           email: firebaseUser.email,
           photoURL: firebaseUser.photoURL,
           verified: firebaseUser.emailVerified,
-          rating: 4.9,
+          rating: profile.rating,
+          ratingCount: profile.ratingCount,
+          salesCount: profile.salesCount,
+          purchasesCount: profile.purchasesCount,
           isLoggedIn: true,
         });
       } else {

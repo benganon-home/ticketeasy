@@ -1,7 +1,8 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Search, TrendingUp, MapPin, ChevronLeft, ChevronRight, Shield, Clock, Zap, Music, Trophy, Laugh, Users } from 'lucide-react';
-import { events, categories, formatPrice, formatDate, formatTime, getHotnessLabel } from '../../data/mockData';
+import { Search, TrendingUp, MapPin, ChevronLeft, ChevronRight, Shield, Clock, Zap } from 'lucide-react';
+import { formatPrice, formatDate, formatTime, getHotnessLabel, categories } from '../../data/mockData';
+import { getEvents } from '../../services/events';
 import { useAuth } from '../../App';
 
 const FRIENDS_EVENTS = [
@@ -319,7 +320,15 @@ function EventCard({ event }) {
 }
 
 function PopularSection() {
-  const sorted = [...events].sort((a, b) => b.hotness - a.hotness);
+  const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getEvents({ sort: 'hotness', max: 4 })
+      .then(setEvents)
+      .finally(() => setLoading(false));
+  }, []);
+
   return (
     <section className="mb-6">
       <div className="flex items-center justify-between mb-3">
@@ -331,11 +340,17 @@ function PopularSection() {
           הכל <ChevronLeft className="w-4 h-4" />
         </Link>
       </div>
-      <div className="grid grid-cols-1 gap-3">
-        {sorted.slice(0, 4).map((event) => (
-          <EventCard key={event.id} event={event} />
-        ))}
-      </div>
+      {loading ? (
+        <div className="space-y-3">
+          {[1,2,3].map(i => <div key={i} className="h-48 rounded-2xl bg-dark-100 dark:bg-dark-700 animate-pulse" />)}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-3">
+          {events.map((event) => (
+            <EventCard key={event.id} event={event} />
+          ))}
+        </div>
+      )}
     </section>
   );
 }
