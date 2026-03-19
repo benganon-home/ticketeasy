@@ -1,4 +1,22 @@
-import React, { useState, useEffect, createContext, useContext } from 'react';
+import React, { useState, useEffect, createContext, useContext, Component } from 'react';
+
+class ErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(e) { return { error: e }; }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ padding: 32, textAlign: 'center', fontFamily: 'sans-serif' }}>
+          <p style={{ fontSize: 48, marginBottom: 8 }}>⚠️</p>
+          <h2 style={{ marginBottom: 8 }}>משהו השתבש</h2>
+          <p style={{ color: '#888', marginBottom: 16, fontSize: 13 }}>{this.state.error?.message}</p>
+          <button onClick={() => window.location.reload()} style={{ padding: '10px 24px', background: '#6C5CE7', color: 'white', border: 'none', borderRadius: 12, cursor: 'pointer' }}>רענן דף</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from './firebase';
@@ -89,6 +107,7 @@ export default function App() {
   const toggleDark = () => setDarkMode((d) => !d);
 
   return (
+    <ErrorBoundary>
     <ThemeContext.Provider value={{ darkMode, toggleDark }}>
       <AuthContext.Provider value={{ user, setUser, authLoading }}>
         <BrowserRouter>
@@ -129,5 +148,6 @@ export default function App() {
         </BrowserRouter>
       </AuthContext.Provider>
     </ThemeContext.Provider>
+    </ErrorBoundary>
   );
 }
