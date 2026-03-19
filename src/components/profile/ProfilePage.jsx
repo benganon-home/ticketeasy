@@ -34,9 +34,9 @@ export default function ProfilePage() {
     if (!user) return;
     setLoading(true);
     Promise.all([
-      getMyPurchases(user.id),
-      getMySales(user.id),
-      getMyListings(user.id),
+      getMyPurchases(user.id).catch(() => []),
+      getMySales(user.id).catch(() => []),
+      getMyListings(user.id).catch(() => []),
     ]).then(([p, s, l]) => {
       setPurchases(p);
       setSales(s);

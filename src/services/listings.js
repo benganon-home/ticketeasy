@@ -17,17 +17,16 @@ export async function getListingsForEvent(eventId) {
   const snap = await getDocs(query(
     collection(db, 'listings'),
     where('eventId', '==', eventId),
-    where('status', '==', 'active'),
-    orderBy('price', 'asc')
+    where('status', '==', 'active')
   ));
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  return docs.sort((a, b) => (a.price || 0) - (b.price || 0));
 }
 
 export async function getMyListings(uid) {
   const snap = await getDocs(query(
     collection(db, 'listings'),
-    where('sellerId', '==', uid),
-    orderBy('createdAt', 'desc')
+    where('sellerId', '==', uid)
   ));
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }

@@ -25,8 +25,7 @@ export async function updateTransaction(id, data) {
 export async function getMyPurchases(uid) {
   const snap = await getDocs(query(
     collection(db, 'transactions'),
-    where('buyerId', '==', uid),
-    orderBy('createdAt', 'desc')
+    where('buyerId', '==', uid)
   ));
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
@@ -34,8 +33,7 @@ export async function getMyPurchases(uid) {
 export async function getMySales(uid) {
   const snap = await getDocs(query(
     collection(db, 'transactions'),
-    where('sellerId', '==', uid),
-    orderBy('createdAt', 'desc')
+    where('sellerId', '==', uid)
   ));
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
