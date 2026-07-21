@@ -2,10 +2,9 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { Upload, Camera, Shield, AlertTriangle, CheckCircle, Tag, Info, Search } from 'lucide-react';
 import { categories, formatPrice } from '../../data/mockData';
-import { createListing } from '../../services/listings';
 import { searchEvents } from '../../services/events';
 import { uploadTicketFile } from '../../services/storage';
-import { ticketOcr } from '../../services/api';
+import { ticketOcr, publishListing } from '../../services/api';
 import { useAuth } from '../../App';
 
 export default function SellPage() {
@@ -91,7 +90,9 @@ export default function SellPage() {
     setSaving(true);
     setError(null);
     try {
-      const id = await createListing({
+      // Server-authoritative create: computes the price cap, dedupes the
+      // barcode, and stores only its hash (see api/publish-listing.js).
+      const { id } = await publishListing({
         eventTitle: form.event,
         eventId: form.eventId,
         category: form.category,
@@ -101,10 +102,8 @@ export default function SellPage() {
         row: form.row,
         seats: form.seats,
         quantity: +form.quantity,
-        sellerId: user.id,
-        sellerName: user.name,
-        sellerRating: user.rating || null,
-        sellerPhotoURL: user.photoURL || null,
+        barcodeValue: form.barcodeValue || null,
+        ticketImagePath: form.ticketImagePath || null,
       });
       setNewListingId(id);
       setStep(3);
@@ -125,10 +124,10 @@ export default function SellPage() {
         <p className="text-sm text-dark-300 dark:text-dark-400 mb-4">המודעה חיה באתר. נודיע לך כשמישהו מתעניין.</p>
         <div className="card-flat mb-4 text-right">
           {[
-            { icon: '✅', text: 'כרטיס אומת ונעול במערכת' },
-            { icon: '🔒', text: 'לא ניתן להעלות כרטיס זהה שוב' },
-            { icon: '📱', text: 'תקבל התראה כשמישהו מתעניין' },
-            { icon: '💰', text: 'כסף ישוחרר רק אחרי אימות הכרטיס' },
+            { icon: '📄', text: 'פרטי הכרטיס חולצו אוטומטית' },
+            { icon: '🔒', text: 'לא ניתן להעלות את אותו כרטיס פעמיים' },
+            { icon: '🔔', text: 'עדכונים על העסקה יופיעו בהתראות' },
+            { icon: '💰', text: 'הכסף ישוחרר רק אחרי שהכרטיס נסרק בכניסה' },
           ].map(({ icon, text }) => (
             <div key={text} className="flex items-center gap-2 py-2 border-b border-dark-50 dark:border-dark-600 last:border-0">
               <span>{icon}</span><span className="text-xs">{text}</span>
@@ -187,7 +186,7 @@ export default function SellPage() {
             ) : (
               <div>
                 <CheckCircle className="w-10 h-10 text-success-500 mx-auto mb-3" />
-                <p className="font-600 text-sm text-success-600 dark:text-success-400 mb-1">הכרטיס אומת!</p>
+                <p className="font-600 text-sm text-success-600 dark:text-success-400 mb-1">הפרטים חולצו מהכרטיס!</p>
                 <p className="text-xs text-dark-300">{file.name}</p>
                 <button onClick={() => { setFile(null); setOcrDone(false); }} className="text-xs text-primary-500 mt-2 underline">החלף קובץ</button>
               </div>
