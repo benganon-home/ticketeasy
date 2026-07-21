@@ -28,7 +28,9 @@ import SearchPage from './components/search/SearchPage';
 import EventPage from './components/event/EventPage';
 import SellPage from './components/sell/SellPage';
 import BuyPage from './components/buy/BuyPage';
+import ListingPage from './components/listing/ListingPage';
 import SmartRevealPage from './components/buy/SmartRevealPage';
+import NotificationsPage from './components/notifications/NotificationsPage';
 import AuthPage from './components/auth/AuthPage';
 import ProfilePage from './components/profile/ProfilePage';
 import MessagingPage from './components/messaging/MessagingPage';
@@ -135,6 +137,7 @@ export default function App() {
                         <Route path="/" element={<HomePage />} />
                         <Route path="/search" element={<SearchPage />} />
                         <Route path="/event/:id" element={<EventPage />} />
+                        <Route path="/listing/:id" element={<ListingPage />} />
                         <Route path="/auth" element={<AuthPage />} />
                         <Route path="/faq" element={<FAQPage />} />
                         <Route path="/terms" element={<TermsPage />} />
@@ -146,6 +149,7 @@ export default function App() {
                         <Route path="/reveal/:txnId" element={<ProtectedRoute><SmartRevealPage /></ProtectedRoute>} />
                         <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
                         <Route path="/messages" element={<ProtectedRoute><MessagingPage /></ProtectedRoute>} />
+                        <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
                         <Route path="/disputes" element={<ProtectedRoute><DisputesPage /></ProtectedRoute>} />
                         <Route path="/admin" element={<AdminRoute><AdminPage /></AdminRoute>} />
                       </Routes>

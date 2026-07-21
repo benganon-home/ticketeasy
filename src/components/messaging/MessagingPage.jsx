@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useLocation } from 'react-router';
 import { Send, ArrowRight } from 'lucide-react';
 import { useAuth } from '../../App';
 import {
@@ -7,22 +8,32 @@ import {
   sendMessage,
   markAsRead,
 } from '../../services/messages';
+import { getUser } from '../../services/users';
 
 export default function MessagingPage() {
   const { user } = useAuth();
+  const location = useLocation();
   const [conversations, setConversations] = useState([]);
-  const [activeConvoId, setActiveConvoId] = useState(null);
+  const [activeConvoId, setActiveConvoId] = useState(location.state?.convoId || null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loadingConvos, setLoadingConvos] = useState(true);
+  const [names, setNames] = useState({}); // uid -> { name, photoURL }
   const bottomRef = useRef(null);
 
-  // Load conversation list
+  const displayName = (uid) => names[uid]?.name || 'משתמש';
+
+  // Load conversation list + resolve the other participants' names
   useEffect(() => {
     if (!user) return;
-    getConversations(user.id).then((convos) => {
+    getConversations(user.id).then(async (convos) => {
       setConversations(convos);
       setLoadingConvos(false);
+      const otherIds = [...new Set(convos.flatMap((c) => c.participants || []).filter((p) => p !== user.id))];
+      const resolved = await Promise.all(otherIds.map((uid) => getUser(uid).catch(() => null)));
+      const map = {};
+      otherIds.forEach((uid, i) => { map[uid] = { name: resolved[i]?.name || null, photoURL: resolved[i]?.photoURL || null }; });
+      setNames(map);
     });
   }, [user]);
 
@@ -49,7 +60,8 @@ export default function MessagingPage() {
   };
 
   const activeConvo = conversations.find((c) => c.id === activeConvoId);
-  const otherParticipantId = activeConvo?.participants?.find((p) => p !== user?.id);
+  const otherParticipantId = activeConvo?.participants?.find((p) => p !== user?.id) || location.state?.otherId;
+  const otherName = names[otherParticipantId]?.name || location.state?.otherName || 'משתמש';
 
   // Conversation list view
   if (!activeConvoId) {
@@ -76,11 +88,13 @@ export default function MessagingPage() {
                   onClick={() => setActiveConvoId(convo.id)}
                   className="card-flat w-full text-right flex items-center gap-3"
                 >
-                  <div className="w-10 h-10 rounded-full bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center font-700 text-primary-600 flex-shrink-0">
-                    {otherId?.charAt(0)?.toUpperCase() || '?'}
+                  <div className="w-10 h-10 rounded-full bg-primary-100 flex items-center justify-center font-700 text-primary-600 flex-shrink-0 overflow-hidden">
+                    {names[otherId]?.photoURL
+                      ? <img src={names[otherId].photoURL} alt="" className="w-full h-full object-cover" />
+                      : displayName(otherId).charAt(0).toUpperCase()}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-600 text-sm truncate">{otherId}</p>
+                    <p className="font-600 text-sm truncate">{displayName(otherId)}</p>
                     <p className="text-xs text-dark-400 truncate">{convo.lastMessage || 'אין הודעות עדיין'}</p>
                   </div>
                 </button>
@@ -99,10 +113,12 @@ export default function MessagingPage() {
         <button onClick={() => { setActiveConvoId(null); setMessages([]); }} className="p-1">
           <ArrowRight className="w-5 h-5 text-dark-400" />
         </button>
-        <div className="w-10 h-10 rounded-full bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center font-700 text-primary-600">
-          {otherParticipantId?.charAt(0)?.toUpperCase() || '?'}
+        <div className="w-10 h-10 rounded-full bg-primary-100 flex items-center justify-center font-700 text-primary-600 overflow-hidden">
+          {names[otherParticipantId]?.photoURL
+            ? <img src={names[otherParticipantId].photoURL} alt="" className="w-full h-full object-cover" />
+            : otherName.charAt(0).toUpperCase()}
         </div>
-        <p className="font-600 text-sm">{otherParticipantId}</p>
+        <p className="font-600 text-sm">{otherName}</p>
       </div>
 
       <div className="flex-1 overflow-y-auto space-y-2 mb-3 px-1">

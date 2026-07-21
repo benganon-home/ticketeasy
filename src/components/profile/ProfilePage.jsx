@@ -111,7 +111,7 @@ export default function ProfilePage() {
           const statusKey = item.status || 'active';
           const status = STATUS_LABELS[statusKey] || { text: statusKey, color: 'dark' };
           return (
-            <Link key={item.id} to={tab === 'מודעות' ? '#' : `/reveal/${item.id}`} className="card-flat flex items-center gap-3">
+            <Link key={item.id} to={tab === 'מודעות' ? `/listing/${item.id}` : `/reveal/${item.id}`} className="card-flat flex items-center gap-3">
               <div className="w-12 h-12 rounded-xl bg-primary-100 dark:bg-primary-900/20 flex items-center justify-center flex-shrink-0">
                 <span className="text-lg">🎫</span>
               </div>

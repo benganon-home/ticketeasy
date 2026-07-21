@@ -15,6 +15,8 @@ export default function SellPage() {
   const [ocrDone, setOcrDone] = useState(false);
   const [duplicateCheck, setDuplicateCheck] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+  const [newListingId, setNewListingId] = useState(null);
   const [eventSuggestions, setEventSuggestions] = useState([]);
   const [searchingEvents, setSearchingEvents] = useState(false);
 
@@ -49,12 +51,20 @@ export default function SellPage() {
   };
 
   const handlePublish = async () => {
-    if (!priceValid || !form.event || !user) return;
+    if (!priceValid || !user) return;
+    // Require a real catalog event so the listing is visible to buyers on the
+    // event page. A free-text-only event would get eventId=null and appear
+    // nowhere for buyers.
+    if (!form.eventId) {
+      setError('בחר אירוע מרשימת ההצעות כדי שהמודעה תופיע לקונים.');
+      return;
+    }
     setSaving(true);
+    setError(null);
     try {
-      await createListing({
+      const id = await createListing({
         eventTitle: form.event,
-        eventId: form.eventId || null,
+        eventId: form.eventId,
         category: form.category,
         originalPrice: +form.originalPrice,
         price: +form.askPrice,
@@ -67,9 +77,10 @@ export default function SellPage() {
         sellerRating: user.rating || null,
         sellerPhotoURL: user.photoURL || null,
       });
+      setNewListingId(id);
       setStep(3);
     } catch (err) {
-      console.error(err);
+      setError(err?.message || 'פרסום המודעה נכשל. נסה שוב.');
     } finally {
       setSaving(false);
     }
@@ -96,8 +107,8 @@ export default function SellPage() {
           ))}
         </div>
         <div className="flex gap-3">
-          <Link to="/" className="btn-secondary flex-1">חזרה לבית</Link>
-          <Link to="/profile" className="btn-primary flex-1">המודעות שלי</Link>
+          <Link to="/profile" className="btn-secondary flex-1">המודעות שלי</Link>
+          <Link to={newListingId ? `/listing/${newListingId}` : '/profile'} className="btn-primary flex-1">צפה במודעה</Link>
         </div>
       </div>
     );
@@ -192,9 +203,11 @@ export default function SellPage() {
                   />
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-dark-300" />
                 </div>
-                {form.eventId && (
+                {form.eventId ? (
                   <span className="text-[10px] text-success-500 mt-0.5 block">✓ מקושר לאירוע במערכת</span>
-                )}
+                ) : form.event.length >= 2 ? (
+                  <span className="text-[10px] text-amber-500 mt-0.5 block">בחר אירוע מרשימת ההצעות כדי לפרסם</span>
+                ) : null}
                 {eventSuggestions.length > 0 && (
                   <div className="absolute z-10 w-full mt-1 bg-white dark:bg-dark-800 rounded-xl shadow-lg border border-dark-100 dark:border-dark-600 overflow-hidden">
                     {eventSuggestions.map((ev) => (
@@ -270,9 +283,16 @@ export default function SellPage() {
             </div>
           </div>
 
+          {error && (
+            <div className="flex items-center gap-2 p-3 rounded-xl bg-danger-50 dark:bg-danger-700/15 mb-3">
+              <AlertTriangle className="w-4 h-4 text-danger-500 flex-shrink-0" />
+              <span className="text-[11px] text-danger-600 dark:text-danger-300">{error}</span>
+            </div>
+          )}
+
           <div className="flex gap-3">
             <button onClick={() => setStep(1)} className="btn-secondary flex-1">חזרה</button>
-            <button onClick={handlePublish} disabled={!priceValid || !form.event || saving} className="btn-primary flex-1 disabled:opacity-40">
+            <button onClick={handlePublish} disabled={!priceValid || !form.eventId || saving} className="btn-primary flex-1 disabled:opacity-40">
               {saving ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto" /> : 'פרסם כרטיס'}
             </button>
           </div>

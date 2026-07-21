@@ -1,11 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router';
 import { useAuth } from '../../App';
 import { Bell, Shield, User } from 'lucide-react';
+import { getNotifications } from '../../services/notifications';
 
 export default function Header() {
   const { user } = useAuth();
-  const [notifCount] = useState(3);
+  const [notifCount, setNotifCount] = useState(0);
+
+  useEffect(() => {
+    if (!user) { setNotifCount(0); return; }
+    getNotifications(user.id).then((n) => setNotifCount(n.length)).catch(() => {});
+  }, [user]);
 
   return (
     <header className="sticky top-0 z-50 glass">
@@ -28,11 +34,11 @@ export default function Header() {
           </div>
 
           {/* Notifications */}
-          <Link to="/messages" className="relative p-2 rounded-xl hover:bg-dark-50 dark:hover:bg-dark-700 transition-colors">
-            <Bell className="w-5 h-5 text-dark-400 dark:text-dark-200" />
+          <Link to="/notifications" className="relative p-2 rounded-xl hover:bg-dark-50 transition-colors" aria-label="התראות">
+            <Bell className="w-5 h-5 text-dark-400" />
             {notifCount > 0 && (
-              <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-danger-400 text-white text-[10px] font-700 flex items-center justify-center animate-bounce-in">
-                {notifCount}
+              <span className="absolute top-1 right-1 min-w-4 h-4 px-1 rounded-full bg-danger-400 text-white text-[10px] font-700 flex items-center justify-center animate-bounce-in">
+                {notifCount > 9 ? '9+' : notifCount}
               </span>
             )}
           </Link>
