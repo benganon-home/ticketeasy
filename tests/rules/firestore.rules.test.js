@@ -18,7 +18,7 @@ import {
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const PROJECT_ID = 'ticketeasy-rules-test';
+const PROJECT_ID = 'demo-ticketeasy';
 
 let testEnv;
 
