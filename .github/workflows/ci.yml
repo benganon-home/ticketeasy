@@ -46,9 +46,10 @@ jobs:
           key: firebase-emulators-${{ runner.os }}
       - name: Install firebase-tools
         run: npm i -g firebase-tools
+      - name: Install root deps
+        run: npm ci
       - name: Install rules test deps
         working-directory: tests/rules
-        run: npm install
+        run: npm install --legacy-peer-deps
       - name: Run rules tests
-        working-directory: tests/rules
-        run: npm test
+        run: npm run test:rules

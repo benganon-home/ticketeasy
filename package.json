@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "seed": "node scripts/seed.mjs",
-    "emulators": "firebase emulators:start"
+    "emulators": "firebase emulators:start",
+    "test:rules": "firebase emulators:exec --only firestore --project demo-ticketeasy \"npm --prefix tests/rules run vitest\""
   },
   "dependencies": {
     "firebase": "^12.11.0",
