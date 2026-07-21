@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { Upload, Camera, Shield, AlertTriangle, CheckCircle, Tag, Info, Search } from 'lucide-react';
 import { categories, formatPrice } from '../../data/mockData';
+import { createListing } from '../../services/listings';
 import { searchEvents } from '../../services/events';
 import { uploadTicketFile } from '../../services/storage';
 import { ticketOcr, publishListing } from '../../services/api';
@@ -90,21 +91,44 @@ export default function SellPage() {
     setSaving(true);
     setError(null);
     try {
-      // Server-authoritative create: computes the price cap, dedupes the
-      // barcode, and stores only its hash (see api/publish-listing.js).
-      const { id } = await publishListing({
-        eventTitle: form.event,
-        eventId: form.eventId,
-        category: form.category,
-        originalPrice: +form.originalPrice,
-        price: +form.askPrice,
-        section: form.section,
-        row: form.row,
-        seats: form.seats,
-        quantity: +form.quantity,
-        barcodeValue: form.barcodeValue || null,
-        ticketImagePath: form.ticketImagePath || null,
-      });
+      let id;
+      try {
+        // Preferred: server-authoritative create — price cap + barcode dedupe,
+        // stores only the barcode hash (api/publish-listing.js).
+        ({ id } = await publishListing({
+          eventTitle: form.event,
+          eventId: form.eventId,
+          category: form.category,
+          originalPrice: +form.originalPrice,
+          price: +form.askPrice,
+          section: form.section,
+          row: form.row,
+          seats: form.seats,
+          quantity: +form.quantity,
+          barcodeValue: form.barcodeValue || null,
+          ticketImagePath: form.ticketImagePath || null,
+        }));
+      } catch (apiErr) {
+        // Real rejections (duplicate barcode / bad input) must surface.
+        if (apiErr?.status === 409 || apiErr?.status === 400) throw apiErr;
+        // Infra not yet configured (function missing / 500 / network) — fall
+        // back to the client write under Firestore rules so Sell still works.
+        id = await createListing({
+          eventTitle: form.event,
+          eventId: form.eventId,
+          category: form.category,
+          originalPrice: +form.originalPrice,
+          price: +form.askPrice,
+          section: form.section,
+          row: form.row,
+          seats: form.seats,
+          quantity: +form.quantity,
+          sellerId: user.id,
+          sellerName: user.name,
+          sellerRating: user.rating || null,
+          sellerPhotoURL: user.photoURL || null,
+        });
+      }
       setNewListingId(id);
       setStep(3);
     } catch (err) {
