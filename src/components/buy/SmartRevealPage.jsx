@@ -1,143 +1,138 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
-import { Lock, Unlock, MapPin, Clock, Shield, Smartphone, AlertTriangle, CheckCircle } from 'lucide-react';
-import { transactions, events, formatDate, formatTime } from '../../data/mockData';
+import { Lock, Unlock, Shield, AlertTriangle, CheckCircle, AlertCircle } from 'lucide-react';
+import { formatPrice, formatDate, formatTime } from '../../data/mockData';
+import { getTransaction } from '../../services/transactions';
+import { getEvent } from '../../services/events';
+import { revealTicket, confirmReceipt } from '../../services/functions';
+import { useAuth } from '../../App';
+
+const REVEAL_WINDOW_MS = 4 * 60 * 60 * 1000; // matches server (revealTicket)
 
 export default function SmartRevealPage() {
   const { txnId } = useParams();
-  const txn = transactions.find((t) => t.id === txnId) || transactions[0];
-  const event = events.find((e) => e.id === txn.eventId);
-  const [status, setStatus] = useState('locked'); // locked, time_ok, location_ok, revealed, scanned
+  const { user } = useAuth();
+  const [txn, setTxn] = useState(null);
+  const [event, setEvent] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [ticketUrl, setTicketUrl] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
   const [countdown, setCountdown] = useState(null);
-  const [locationGranted, setLocationGranted] = useState(false);
 
+  const refresh = useCallback(async () => {
+    const t = await getTransaction(txnId);
+    setTxn(t);
+    if (t?.eventId) setEvent(await getEvent(t.eventId));
+    setLoading(false);
+  }, [txnId]);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  // Countdown to the reveal window (UX only; the server is authoritative).
   useEffect(() => {
-    const eventDate = new Date(event.date);
-    const revealTime = new Date(eventDate.getTime() - 3 * 60 * 60 * 1000);
-    const interval = setInterval(() => {
-      const now = new Date();
-      const diff = revealTime - now;
-      if (diff <= 0) {
-        setStatus('time_ok');
-        setCountdown(null);
-      } else {
-        const h = Math.floor(diff / 3600000);
-        const m = Math.floor((diff % 3600000) / 60000);
-        const s = Math.floor((diff % 60000) / 1000);
-        setCountdown(`${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`);
-      }
-    }, 1000);
-    return () => clearInterval(interval);
+    if (!event?.date) { setCountdown(null); return; }
+    const revealAt = Date.parse(event.date) - REVEAL_WINDOW_MS;
+    const tick = () => {
+      const diff = revealAt - Date.now();
+      if (diff <= 0) { setCountdown(null); return; }
+      const h = Math.floor(diff / 3600000);
+      const m = Math.floor((diff % 3600000) / 60000);
+      const s = Math.floor((diff % 60000) / 1000);
+      setCountdown(`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
   }, [event]);
 
-  const handleLocationCheck = () => {
-    setLocationGranted(true);
-    setTimeout(() => setStatus('location_ok'), 1500);
+  const handleReveal = async () => {
+    setBusy(true); setError(null);
+    try {
+      const res = await revealTicket({ txnId });
+      setTicketUrl(res.ticketUrl || null);
+      await refresh();
+    } catch (err) {
+      setError(err?.message || 'לא ניתן לחשוף את הכרטיס כרגע.');
+    } finally { setBusy(false); }
   };
 
-  const handleReveal = () => {
-    setStatus('revealed');
+  const handleConfirm = async () => {
+    setBusy(true); setError(null);
+    try {
+      await confirmReceipt({ txnId });
+      await refresh();
+    } catch (err) {
+      setError(err?.message || 'לא ניתן לאשר קבלה כרגע.');
+    } finally { setBusy(false); }
   };
 
-  const handleScan = () => {
-    setStatus('scanned');
-  };
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="w-8 h-8 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
-  const steps = [
-    { id: 'time', label: 'זמן', desc: '2-4 שעות לפני', icon: Clock, done: ['time_ok','location_ok','revealed','scanned'].includes(status) },
-    { id: 'location', label: 'מיקום', desc: 'בטווח 2 ק"מ', icon: MapPin, done: ['location_ok','revealed','scanned'].includes(status) },
-    { id: 'reveal', label: 'חשיפה', desc: 'חד פעמית', icon: Unlock, done: ['revealed','scanned'].includes(status) },
-    { id: 'scan', label: 'סריקה', desc: 'בכניסה', icon: CheckCircle, done: status === 'scanned' },
-  ];
+  if (!txn) {
+    return <div className="text-center py-12 text-dark-400">העסקה לא נמצאה</div>;
+  }
+
+  if (user && txn.buyerId !== user.id) {
+    return <div className="text-center py-12 text-dark-400">אין לך הרשאה לצפות בעסקה זו</div>;
+  }
+
+  const status = txn.status;
 
   return (
     <div>
       <h1 className="font-800 text-xl mb-1">Smart Reveal</h1>
-      <p className="text-sm text-dark-300 dark:text-dark-400 mb-6">{event?.title}</p>
+      <p className="text-sm text-dark-300 dark:text-dark-400 mb-6">{event?.title || txn.eventTitle}</p>
 
-      {/* Progress */}
-      <div className="flex items-center justify-between mb-8 px-2">
-        {steps.map((s, i) => (
-          <React.Fragment key={s.id}>
-            <div className="flex flex-col items-center gap-1">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500 ${
-                s.done ? 'bg-success-500 text-white scale-110' : 'bg-dark-100 dark:bg-dark-600 text-dark-400'
-              }`}>
-                <s.icon className="w-5 h-5" />
-              </div>
-              <span className="text-[10px] font-600">{s.label}</span>
-            </div>
-            {i < steps.length - 1 && (
-              <div className={`flex-1 h-0.5 mx-1 transition-colors duration-500 ${s.done ? 'bg-success-500' : 'bg-dark-100 dark:bg-dark-600'}`} />
-            )}
-          </React.Fragment>
-        ))}
-      </div>
+      {error && (
+        <div className="flex items-center gap-2 p-3 rounded-xl bg-red-50 dark:bg-red-900/20 mb-4">
+          <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+          <span className="text-[11px] text-red-600 dark:text-red-300">{error}</span>
+        </div>
+      )}
 
-      {/* Content by status */}
-      {status === 'locked' && (
+      {status === 'created' && (
+        <div className="text-center animate-fade-in">
+          <div className="w-24 h-24 mx-auto mb-4 rounded-full bg-amber-50 dark:bg-amber-600/20 flex items-center justify-center">
+            <Lock className="w-12 h-12 text-amber-500" />
+          </div>
+          <h2 className="font-700 text-lg mb-2">ממתין לתשלום</h2>
+          <p className="text-sm text-dark-300 dark:text-dark-400">הכרטיס יינעל בנאמנות ברגע שהתשלום יאושר.</p>
+        </div>
+      )}
+
+      {status === 'paid' && (
         <div className="text-center animate-fade-in">
           <div className="w-24 h-24 mx-auto mb-4 rounded-full bg-primary-50 dark:bg-primary-900/20 flex items-center justify-center">
             <Lock className="w-12 h-12 text-primary-500 animate-pulse-soft" />
           </div>
           <h2 className="font-700 text-lg mb-2">הכרטיס נעול</h2>
           <p className="text-sm text-dark-300 dark:text-dark-400 mb-4">
-            הכרטיס ייחשף {countdown ? `בעוד` : 'כשיגיע הזמן'}
+            {countdown ? 'הכרטיס ייחשף בעוד' : 'הכרטיס מוכן לחשיפה'}
           </p>
           {countdown && (
-            <div className="inline-block px-6 py-3 rounded-2xl bg-dark-800 dark:bg-dark-700" dir="ltr">
+            <div className="inline-block px-6 py-3 rounded-2xl bg-dark-800 dark:bg-dark-700 mb-4" dir="ltr">
               <span className="font-mono font-800 text-3xl text-white tracking-wider">{countdown}</span>
             </div>
           )}
-          <div className="card-flat mt-6 text-right">
+          <div className="card-flat my-4 text-right">
             <div className="flex items-center gap-2 mb-2">
               <Shield className="w-4 h-4 text-success-500" />
               <span className="text-xs font-600">למה הכרטיס נעול?</span>
             </div>
             <p className="text-xs text-dark-400 leading-relaxed">
-              מנגנון Smart Reveal מגן עליך על ידי חשיפת הכרטיס רק בסמוך לאירוע.
-              זה מונע העתקה, הפצה או שימוש לרעה בכרטיס.
-              הכרטיס ייחשף פעם אחת בלבד ולא ניתן לצלם או לשתף אותו.
+              מנגנון Smart Reveal חושף את הכרטיס רק בסמוך לאירוע כדי למנוע העתקה,
+              הפצה או שימוש לרעה. החשיפה מאומתת בשרת ומתאפשרת עד 4 שעות לפני האירוע.
             </p>
           </div>
-          {/* Demo button */}
-          <button onClick={() => setStatus('time_ok')} className="btn-secondary mt-4 text-xs">(דמו: דלג על זמן)</button>
-        </div>
-      )}
-
-      {status === 'time_ok' && (
-        <div className="text-center animate-fade-in">
-          <div className="w-24 h-24 mx-auto mb-4 rounded-full bg-amber-50 dark:bg-amber-600/20 flex items-center justify-center">
-            <MapPin className="w-12 h-12 text-amber-500" />
-          </div>
-          <h2 className="font-700 text-lg mb-2">אימות מיקום</h2>
-          <p className="text-sm text-dark-300 dark:text-dark-400 mb-4">
-            כדי לחשוף את הכרטיס, נוודא שאתה בקרבת מקום האירוע
-          </p>
-          <p className="text-xs text-dark-400 mb-6">{event?.venue}, {event?.city}</p>
-          <button onClick={handleLocationCheck} className="btn-primary w-full flex items-center justify-center gap-2">
-            <MapPin className="w-5 h-5" />
-            {locationGranted ? 'בודק מיקום...' : 'אשר מיקום'}
-          </button>
-          <button onClick={() => setStatus('location_ok')} className="btn-secondary mt-3 text-xs w-full">(דמו: דלג על מיקום)</button>
-        </div>
-      )}
-
-      {status === 'location_ok' && (
-        <div className="text-center animate-fade-in">
-          <div className="w-24 h-24 mx-auto mb-4 rounded-full bg-success-50 dark:bg-success-700/20 flex items-center justify-center">
-            <Unlock className="w-12 h-12 text-success-500" />
-          </div>
-          <h2 className="font-700 text-lg mb-2">מוכן לחשיפה!</h2>
-          <p className="text-sm text-dark-300 dark:text-dark-400 mb-2">זמן ומיקום אומתו בהצלחה</p>
-          <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-50 dark:bg-amber-600/15 mb-6 text-right">
-            <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
-            <span className="text-xs text-amber-700 dark:text-amber-300">
-              שים לב: הכרטיס ייחשף פעם אחת בלבד. לאחר החשיפה לא ניתן לחשוף אותו שוב.
-            </span>
-          </div>
-          <button onClick={handleReveal} className="btn-success w-full text-lg font-700 py-4">
-            חשוף את הכרטיס
+          <button onClick={handleReveal} disabled={busy} className="btn-success w-full text-lg font-700 py-4 disabled:opacity-40 flex items-center justify-center gap-2">
+            {busy ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <><Unlock className="w-5 h-5" />חשוף את הכרטיס</>}
           </button>
         </div>
       )}
@@ -145,47 +140,56 @@ export default function SmartRevealPage() {
       {status === 'revealed' && (
         <div className="text-center animate-bounce-in">
           <div className="card p-6 mb-4">
-            <div className="w-48 h-48 mx-auto mb-4 rounded-2xl bg-white dark:bg-dark-800 border-2 border-dashed border-primary-300 flex items-center justify-center">
-              <div className="text-center">
-                <Smartphone className="w-10 h-10 text-primary-500 mx-auto mb-2" />
-                <p className="text-xs text-dark-400">[QR Code]</p>
-                <p className="text-[10px] text-dark-300 mt-1">הראה בכניסה</p>
-              </div>
+            <div className="w-56 h-56 mx-auto mb-4 rounded-2xl bg-white dark:bg-dark-800 border-2 border-dashed border-primary-300 flex items-center justify-center overflow-hidden">
+              {ticketUrl
+                ? <img src={ticketUrl} alt="הכרטיס שלך" className="w-full h-full object-contain" />
+                : <p className="text-xs text-dark-400 px-4">הכרטיס נחשף. אם אינך רואה אותו, רענן את העמוד לקבלת קישור מאובטח חדש.</p>}
             </div>
-            <p className="text-sm font-600">{event?.title}</p>
-            <p className="text-xs text-dark-400">{formatDate(event?.date)} · {formatTime(event?.date)}</p>
-            <p className="text-xs text-dark-400">{event?.venue}</p>
+            <p className="text-sm font-600">{event?.title || txn.eventTitle}</p>
+            {event?.date && <p className="text-xs text-dark-400">{formatDate(event.date)} · {formatTime(event.date)}</p>}
+            {event?.venue && <p className="text-xs text-dark-400">{event.venue}</p>}
           </div>
           <div className="flex items-center gap-2 p-3 rounded-xl bg-danger-50 dark:bg-danger-700/15 mb-4">
-            <AlertTriangle className="w-4 h-4 text-danger-500" />
-            <span className="text-xs text-danger-600 dark:text-danger-300">
-              כרטיס חד-פעמי — לא ניתן לצלם מסך או לשתף
-            </span>
+            <AlertTriangle className="w-4 h-4 text-danger-500 flex-shrink-0" />
+            <span className="text-xs text-danger-600 dark:text-danger-300">כרטיס חד-פעמי — הקישור בתוקף למספר דקות בלבד</span>
           </div>
-          <button onClick={handleScan} className="btn-primary w-full">(דמו: סרוק כרטיס)</button>
+          <button onClick={handleConfirm} disabled={busy} className="btn-primary w-full disabled:opacity-40">
+            {busy ? 'מאשר...' : 'אשר קבלת כרטיס תקין'}
+          </button>
         </div>
       )}
 
-      {status === 'scanned' && (
+      {(status === 'released' || status === 'refunded') && (
         <div className="text-center animate-fade-in">
           <div className="w-24 h-24 mx-auto mb-4 rounded-full bg-success-500 flex items-center justify-center animate-bounce-in">
             <CheckCircle className="w-12 h-12 text-white" />
           </div>
-          <h2 className="font-700 text-xl mb-2 text-success-600 dark:text-success-400">הכרטיס נסרק בהצלחה!</h2>
-          <p className="text-sm text-dark-300 dark:text-dark-400 mb-4">תהנה מהאירוע! הכסף ישוחרר למוכר.</p>
+          <h2 className="font-700 text-xl mb-2 text-success-600 dark:text-success-400">
+            {status === 'released' ? 'העסקה הושלמה!' : 'העסקה זוכתה'}
+          </h2>
+          <p className="text-sm text-dark-300 dark:text-dark-400 mb-4">
+            {status === 'released' ? 'תהנה מהאירוע! הכסף שוחרר למוכר.' : 'הכסף הוחזר אליך.'}
+          </p>
           <div className="card-flat">
             <div className="flex items-center gap-2">
               <Shield className="w-4 h-4 text-success-500" />
-              <span className="text-xs font-600 text-success-600 dark:text-success-300">העסקה הושלמה</span>
+              <span className="text-xs font-600 text-success-600 dark:text-success-300">
+                {formatPrice(txn.price)} · {status === 'released' ? 'שוחרר למוכר' : 'הוחזר לקונה'}
+              </span>
             </div>
-            <p className="text-[10px] text-dark-400 mt-1">
-              {formatPrice(txn?.price || 130)} ישוחרר למוכר. אם יש בעיה — יש לך 48 שעות לפתוח מחלוקת.
-            </p>
           </div>
+        </div>
+      )}
+
+      {status === 'disputed' && (
+        <div className="text-center animate-fade-in">
+          <div className="w-24 h-24 mx-auto mb-4 rounded-full bg-amber-50 dark:bg-amber-600/20 flex items-center justify-center">
+            <AlertTriangle className="w-12 h-12 text-amber-500" />
+          </div>
+          <h2 className="font-700 text-lg mb-2">מחלוקת פתוחה</h2>
+          <p className="text-sm text-dark-300 dark:text-dark-400">הצוות שלנו בוחן את המקרה. הכסף מוקפא עד להכרעה.</p>
         </div>
       )}
     </div>
   );
 }
-
-function formatPrice(p) { return `₪${p}`; }

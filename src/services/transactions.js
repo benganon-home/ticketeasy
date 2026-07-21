@@ -1,25 +1,20 @@
-import {
-  collection, doc, getDoc, addDoc, updateDoc,
-  query, where, orderBy, getDocs, serverTimestamp
-} from 'firebase/firestore';
+import { collection, doc, getDoc, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
+import { createTransaction as createTransactionFn } from './functions';
 
-export async function createTransaction(data) {
-  const ref = await addDoc(collection(db, 'transactions'), {
-    ...data,
-    status: 'pending_payment', // pending_payment | escrow | revealed | scanned | completed | disputed | refunded
-    createdAt: serverTimestamp(),
-  });
-  return ref.id;
+// Transaction CREATION and all status transitions run server-side via Cloud
+// Functions (see src/services/functions.js). The client only READS here.
+
+// Buyer initiates a purchase — server computes price/fee/total from the
+// listing and returns { txnId }.
+export async function createTransaction(listingId) {
+  const { txnId } = await createTransactionFn({ listingId });
+  return txnId;
 }
 
 export async function getTransaction(id) {
   const snap = await getDoc(doc(db, 'transactions', id));
   return snap.exists() ? { id: snap.id, ...snap.data() } : null;
-}
-
-export async function updateTransaction(id, data) {
-  await updateDoc(doc(db, 'transactions', id), { ...data, updatedAt: serverTimestamp() });
 }
 
 export async function getMyPurchases(uid) {

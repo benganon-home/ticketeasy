@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { Shield, Lock, CreditCard, CheckCircle } from 'lucide-react';
+import { Shield, Lock, CheckCircle, AlertCircle } from 'lucide-react';
 import { formatPrice } from '../../data/mockData';
-import { getListing, updateListing } from '../../services/listings';
+import { getListing } from '../../services/listings';
 import { createTransaction } from '../../services/transactions';
 import { getEvent } from '../../services/events';
 import { useAuth } from '../../App';
@@ -18,6 +18,7 @@ export default function BuyPage() {
   const [agreed, setAgreed] = useState(false);
   const [paying, setPaying] = useState(false);
   const [txnId, setTxnId] = useState(null);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     async function load() {
@@ -39,28 +40,16 @@ export default function BuyPage() {
   const handlePay = async () => {
     if (!user || !listing) return;
     setPaying(true);
+    setError(null);
     try {
-      const id = await createTransaction({
-        listingId: listing.id,
-        eventId: listing.eventId || null,
-        eventTitle: listing.eventTitle,
-        buyerId: user.id,
-        buyerName: user.name,
-        sellerId: listing.sellerId,
-        sellerName: listing.sellerName,
-        price: listing.price,
-        serviceFee,
-        total,
-        section: listing.section,
-        row: listing.row,
-        seats: listing.seats,
-        quantity: listing.quantity,
-      });
-      await updateListing(listing.id, { status: 'sold' });
+      // Server computes price/fee/total and reserves the listing. Payment
+      // itself happens on the PSP hosted page (Phase 3); the createTransaction
+      // response will carry a paymentUrl to redirect to once PayPlus is wired.
+      const id = await createTransaction(listing.id);
       setTxnId(id);
       setStep(3);
     } catch (err) {
-      console.error(err);
+      setError(err?.message || 'אירעה שגיאה בעת יצירת העסקה. נסה שוב.');
     } finally {
       setPaying(false);
     }
@@ -186,34 +175,39 @@ export default function BuyPage() {
         <div className="animate-fade-in">
           <div className="card-flat mb-4">
             <h3 className="font-600 text-sm mb-3 flex items-center gap-2">
-              <CreditCard className="w-4 h-4 text-primary-500" />
-              פרטי תשלום
+              <Lock className="w-4 h-4 text-primary-500" />
+              תשלום מאובטח
             </h3>
-            <p className="text-xs text-dark-400 mb-3">תשלום מאובטח דרך PayPlus</p>
-            <div className="space-y-3">
-              <input type="text" placeholder="מספר כרטיס אשראי" className="input-field text-sm" dir="ltr" />
-              <div className="grid grid-cols-2 gap-3">
-                <input type="text" placeholder="MM/YY" className="input-field text-sm text-center" dir="ltr" />
-                <input type="text" placeholder="CVV" className="input-field text-sm text-center" dir="ltr" />
-              </div>
-              <input type="text" placeholder="שם בעל הכרטיס" className="input-field text-sm" />
-              <input type="text" placeholder="תעודת זהות" className="input-field text-sm" dir="ltr" />
+            <p className="text-xs text-dark-400 mb-3">
+              התשלום מתבצע בעמוד סליקה מאובטח של ספק התשלומים. פרטי האשראי שלך
+              לעולם אינם נשמרים או עוברים דרך TicketEasy.
+            </p>
+            <div className="flex justify-between text-sm border-t border-dark-100 dark:border-dark-600 pt-3">
+              <span className="font-700">סה"כ לתשלום</span>
+              <span className="font-800 text-primary-600 dark:text-primary-400 text-lg">{formatPrice(total)}</span>
             </div>
           </div>
 
           <div className="flex items-center gap-2 p-3 rounded-xl bg-success-50 dark:bg-success-700/15 mb-4">
-            <Shield className="w-4 h-4 text-success-500" />
+            <Shield className="w-4 h-4 text-success-500 flex-shrink-0" />
             <span className="text-[10px] text-success-600 dark:text-success-300">
-              התשלום מאובטח בתקן PCI DSS. הכסף מוחזק אצלנו ולא עובר ישירות למוכר.
+              הכסף מוחזק בנאמנות ולא עובר למוכר עד שהכרטיס נחשף ואושר.
             </span>
           </div>
+
+          {error && (
+            <div className="flex items-center gap-2 p-3 rounded-xl bg-red-50 dark:bg-red-900/20 mb-4">
+              <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+              <span className="text-[11px] text-red-600 dark:text-red-300">{error}</span>
+            </div>
+          )}
 
           <div className="flex gap-3">
             <button onClick={() => setStep(1)} className="btn-secondary flex-1">חזרה</button>
             <button onClick={handlePay} disabled={paying} className="btn-primary flex-1 flex items-center justify-center gap-2 disabled:opacity-40">
               {paying
                 ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                : <><Lock className="w-4 h-4" />שלם {formatPrice(total)}</>
+                : <><Lock className="w-4 h-4" />המשך לתשלום מאובטח</>
               }
             </button>
           </div>
