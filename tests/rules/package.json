@@ -1,0 +1,13 @@
+{
+  "name": "ticketeasy-rules-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "firebase emulators:exec --only firestore \"vitest run\""
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^4.0.0",
+    "firebase": "^12.16.0",
+    "vitest": "^3.0.0"
+  }
+}
