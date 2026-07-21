@@ -32,6 +32,36 @@ const SEED_EVENTS = [
   { title: 'ברוך ובינשטיין — מופע משפחתי', artist: 'ברוך ובינשטיין', category: 'family', venue: 'היכל התרבות', city: 'תל אביב', date: '2026-08-04T11:00:00', image: 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&h=400&fit=crop', originalPrice: 90, minPrice: 90, ticketsAvailable: 30, hotness: 65, tags: ['משפחה', 'ילדים', 'קומדיה'], active: true },
 ];
 
+// Optional: enrich a venue with Google Places (location + rating) when
+// GOOGLE_MAPS_SERVER_KEY is set. Returns {} on any failure so seeding never breaks.
+async function enrichVenue(venue, city) {
+  const key = process.env.GOOGLE_MAPS_SERVER_KEY;
+  if (!key) return {};
+  try {
+    const resp = await fetch('https://places.googleapis.com/v1/places:searchText', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': key,
+        'X-Goog-FieldMask': 'places.id,places.location,places.formattedAddress,places.rating,places.userRatingCount',
+      },
+      body: JSON.stringify({ textQuery: [venue, city].filter(Boolean).join(', '), languageCode: 'he', regionCode: 'IL' }),
+    });
+    const json = await resp.json();
+    const p = json.places?.[0];
+    if (!p) return {};
+    return {
+      placeId: p.id ?? null,
+      location: p.location ? { lat: p.location.latitude, lng: p.location.longitude } : null,
+      address: p.formattedAddress ?? null,
+      googleRating: p.rating ?? null,
+      googleRatingCount: p.userRatingCount ?? null,
+    };
+  } catch {
+    return {};
+  }
+}
+
 function makeApp() {
   if (useEmulator) return initializeApp({ projectId: PROJECT_ID });
   const keyPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
@@ -53,13 +83,17 @@ async function main() {
     return;
   }
 
+  const enriched = process.env.GOOGLE_MAPS_SERVER_KEY
+    ? await Promise.all(SEED_EVENTS.map(async (ev) => ({ ...ev, ...(await enrichVenue(ev.venue, ev.city)) })))
+    : SEED_EVENTS;
+
   const batch = db.batch();
-  for (const ev of SEED_EVENTS) {
+  for (const ev of enriched) {
     const ref = db.collection('events').doc();
     batch.set(ref, { ...ev, createdAt: FieldValue.serverTimestamp() });
   }
   await batch.commit();
-  console.log(`Seeded ${SEED_EVENTS.length} events.`);
+  console.log(`Seeded ${enriched.length} events${process.env.GOOGLE_MAPS_SERVER_KEY ? ' (with venue location + rating)' : ''}.`);
 }
 
 main().then(() => process.exit(0)).catch((err) => { console.error(err); process.exit(1); });

@@ -12,6 +12,18 @@ import { transitionTxn } from '../lib/txn.js';
 
 const REVEAL_WINDOW_MS = 4 * 60 * 60 * 1000; // reveal allowed from 4h before start
 const SIGNED_URL_TTL_MS = 15 * 60 * 1000; // 15 minutes
+const GEOFENCE_KM = 3; // buyer must be within 3km of the venue if coords provided
+
+// Haversine distance in km.
+function distanceKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const R = 6371;
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+  const dLng = ((b.lng - a.lng) * Math.PI) / 180;
+  const s =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((a.lat * Math.PI) / 180) * Math.cos((b.lat * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(s));
+}
 
 export const revealTicket = onCall({ region: 'me-west1' }, async (req) => {
   assertAppCheck(req);
@@ -26,12 +38,22 @@ export const revealTicket = onCall({ region: 'me-west1' }, async (req) => {
   const txn = snap.data()!;
   if (txn.buyerId !== uid) throw new HttpsError('permission-denied', 'אין הרשאה לעסקה זו.');
 
-  // Time-window gate against the event start.
+  // Time-window + optional geofence gate against the event.
+  const coords = req.data?.coords; // { lat, lng } — optional (client may lack GPS permission)
   if (txn.eventId) {
     const ev = await db.doc(`events/${txn.eventId}`).get();
-    const startsAt = ev.exists ? Date.parse(ev.data()?.date ?? '') : NaN;
+    const eventData = ev.exists ? ev.data() : null;
+    const startsAt = eventData ? Date.parse(eventData.date ?? '') : NaN;
     if (!Number.isNaN(startsAt) && Date.now() < startsAt - REVEAL_WINDOW_MS) {
       throw new HttpsError('failed-precondition', 'החשיפה תתאפשר קרוב יותר למועד האירוע.');
+    }
+    // Soft geofence: only enforced when the event has coords AND the client
+    // supplied its location. GPS-denied buyers still pass the time gate.
+    const venue = eventData?.location;
+    if (venue?.lat != null && coords?.lat != null && coords?.lng != null) {
+      if (distanceKm(coords, venue) > GEOFENCE_KM) {
+        throw new HttpsError('failed-precondition', 'החשיפה מתאפשרת רק בקרבת מקום האירוע.');
+      }
     }
   }
 

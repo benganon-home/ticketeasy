@@ -149,15 +149,38 @@ export default function EventPage() {
             <Clock className="w-4 h-4 text-primary-500" />
             <span className="text-sm font-500">{formatDate(event.date)} · {formatTime(event.date)}</span>
           </div>
-          <div className="flex items-center gap-2 mb-2">
+          <div className="flex items-center gap-2 mb-2 flex-wrap">
             <MapPin className="w-4 h-4 text-primary-500" />
             <span className="text-sm font-500">{event.venue}, {event.city}</span>
+            {event.googleRating != null && (
+              <span className="inline-flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-300 bg-amber-50 dark:bg-amber-600/15 px-1.5 py-0.5 rounded-full">
+                ★ {Number(event.googleRating).toFixed(1)}
+                {event.googleRatingCount != null && <span className="text-dark-300">({event.googleRatingCount})</span>}
+                <span className="text-dark-300">Google</span>
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <Tag className="w-4 h-4 text-primary-500" />
             <span className="text-sm font-500">מחיר מקורי: {formatPrice(event.originalPrice || event.minPrice)}</span>
           </div>
         </div>
+
+        {event.location && import.meta.env.VITE_GOOGLE_MAPS_BROWSER_KEY && (
+          <a
+            href={`https://www.google.com/maps/search/?api=1&query=${event.location.lat},${event.location.lng}${event.placeId ? `&query_place_id=${event.placeId}` : ''}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block rounded-2xl overflow-hidden mb-4 border border-dark-100 dark:border-dark-600"
+          >
+            <img
+              alt={`מפה: ${event.venue}`}
+              className="w-full h-40 object-cover"
+              loading="lazy"
+              src={`https://maps.googleapis.com/maps/api/staticmap?center=${event.location.lat},${event.location.lng}&zoom=15&size=600x300&scale=2&markers=color:0x6C5CE7%7C${event.location.lat},${event.location.lng}&key=${import.meta.env.VITE_GOOGLE_MAPS_BROWSER_KEY}`}
+            />
+          </a>
+        )}
 
         <div className="flex items-center gap-3 p-3 rounded-2xl bg-success-50 dark:bg-success-700/15 mb-4 trust-glow">
           <Shield className="w-5 h-5 text-success-500 flex-shrink-0" />
