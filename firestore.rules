@@ -82,7 +82,7 @@ service cloud.firestore {
         && current().sellerId == request.auth.uid
         && current().status == 'active'
         && onlyChanged(['price', 'seats', 'row', 'section', 'notes', 'status', 'updatedAt'])
-        && incoming().status in ['active', 'cancelled']
+        && (incoming().status == 'active' || incoming().status == 'cancelled')
         && incoming().price is number
         && incoming().price > 0
         && incoming().price <= current().originalPrice * 1.2;
