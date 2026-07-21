@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router';
 import { Star, Shield, ChevronLeft, Settings, LogOut, HelpCircle, FileText } from 'lucide-react';
 import { signOut } from 'firebase/auth';
 import { auth } from '../../firebase';

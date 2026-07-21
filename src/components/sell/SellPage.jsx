@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router';
 import { Upload, Camera, Shield, AlertTriangle, CheckCircle, Tag, Info, Search } from 'lucide-react';
 import { categories, formatPrice } from '../../data/mockData';
 import { createListing } from '../../services/listings';

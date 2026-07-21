@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams } from 'react-router';
 import { Lock, Unlock, Shield, AlertTriangle, CheckCircle, AlertCircle } from 'lucide-react';
 import { formatPrice, formatDate, formatTime } from '../../data/mockData';
 import { getTransaction } from '../../services/transactions';

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router';
 import { Search, SlidersHorizontal, MapPin, Clock, X, ChevronDown } from 'lucide-react';
 import { categories, formatPrice, formatDate, formatTime, getHotnessLabel } from '../../data/mockData';
 import { getEvents, searchEvents } from '../../services/events';

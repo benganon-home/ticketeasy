@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router';
 import { Search, TrendingUp, MapPin, ChevronLeft, ChevronRight, Shield, Clock, Zap } from 'lucide-react';
 import { formatPrice, formatDate, formatTime, getHotnessLabel, categories } from '../../data/mockData';
 import { getEvents } from '../../services/events';

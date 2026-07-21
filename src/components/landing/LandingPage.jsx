@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { Shield, Clock, Zap, Star, ArrowLeft, Lock, Users, CheckCircle } from 'lucide-react';
 
 export default function LandingPage() {
