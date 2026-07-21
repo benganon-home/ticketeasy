@@ -19,6 +19,18 @@ service firebase.storage {
       allow update, delete: if false;
     }
 
+    // Pre-listing ticket uploads: owner writes, nobody reads from the client.
+    // The OCR / publish functions read these server-side via the Admin SDK.
+    match /ticket-uploads/{uid}/{fileName} {
+      allow read: if false;
+      allow create: if request.auth != null
+        && request.auth.uid == uid
+        && request.resource.size < 10 * 1024 * 1024
+        && (request.resource.contentType.matches('image/.*')
+            || request.resource.contentType == 'application/pdf');
+      allow update, delete: if false;
+    }
+
     // User avatars: public read, owner-only write.
     match /avatars/{uid}/{fileName} {
       allow read: if true;

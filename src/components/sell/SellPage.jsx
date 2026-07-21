@@ -4,6 +4,8 @@ import { Upload, Camera, Shield, AlertTriangle, CheckCircle, Tag, Info, Search }
 import { categories, formatPrice } from '../../data/mockData';
 import { createListing } from '../../services/listings';
 import { searchEvents } from '../../services/events';
+import { uploadTicketFile } from '../../services/storage';
+import { ticketOcr } from '../../services/api';
 import { useAuth } from '../../App';
 
 export default function SellPage() {
@@ -11,8 +13,9 @@ export default function SellPage() {
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [file, setFile] = useState(null);
-  const [form, setForm] = useState({ event: '', eventId: '', category: '', originalPrice: '', askPrice: '', section: '', row: '', seats: '', quantity: '1' });
+  const [form, setForm] = useState({ event: '', eventId: '', category: '', originalPrice: '', askPrice: '', section: '', row: '', seats: '', quantity: '1', barcodeValue: '', ticketImagePath: '' });
   const [ocrDone, setOcrDone] = useState(false);
+  const [ocrError, setOcrError] = useState(null);
   const [duplicateCheck, setDuplicateCheck] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -23,17 +26,43 @@ export default function SellPage() {
   const maxPrice = form.originalPrice ? Math.round(form.originalPrice * 1.2) : 0;
   const priceValid = form.askPrice && form.originalPrice && +form.askPrice <= maxPrice;
 
-  const simulateOCR = () => {
-    setTimeout(() => {
-      setForm(f => ({ ...f, event: 'מכבי תל אביב vs הפועל באר שבע', category: 'sports', originalPrice: '120', section: 'יציע מזרחי', row: '15', seats: '8-9' }));
+  const CATEGORY_SET = new Set(['music', 'sports', 'theater', 'standup', 'festivals', 'family']);
+
+  const runOCR = async (f) => {
+    setOcrError(null);
+    try {
+      const storagePath = await uploadTicketFile(f);
+      const { data } = await ticketOcr(storagePath);
+      // Try to link to a catalog event (sets eventId + authoritative face value).
+      let matched = null;
+      if (data.eventTitle) {
+        const results = await searchEvents(data.eventTitle).catch(() => []);
+        matched = results[0] || null;
+      }
+      setForm((prev) => ({
+        ...prev,
+        event: matched?.title || data.eventTitle || prev.event,
+        eventId: matched?.id || '',
+        category: matched?.category || (CATEGORY_SET.has(data.category) ? data.category : prev.category),
+        originalPrice: String(matched?.originalPrice || data.faceValue || prev.originalPrice || ''),
+        section: data.section || prev.section,
+        row: data.row || prev.row,
+        seats: data.seats || prev.seats,
+        quantity: data.quantity ? String(data.quantity) : prev.quantity,
+        barcodeValue: data.barcodeValue || '',
+        ticketImagePath: storagePath,
+      }));
       setOcrDone(true);
       setDuplicateCheck('clear');
-    }, 2000);
+    } catch (err) {
+      setOcrError(err?.message || 'קריאת הכרטיס נכשלה. מלא את הפרטים ידנית.');
+      setOcrDone(true); // let the seller proceed and fill fields manually
+    }
   };
 
   const handleFileUpload = (e) => {
     const f = e.target.files?.[0];
-    if (f) { setFile(f); simulateOCR(); }
+    if (f) { setFile(f); setOcrDone(false); runOCR(f); }
   };
 
   const handleEventSearch = async (val) => {
@@ -176,6 +205,13 @@ export default function SellPage() {
             <div className="flex items-center gap-2 p-3 rounded-xl bg-danger-50 dark:bg-danger-700/15 mb-4">
               <AlertTriangle className="w-4 h-4 text-danger-500" />
               <span className="text-xs text-danger-600 dark:text-danger-300">כרטיס זה כבר קיים במערכת!</span>
+            </div>
+          )}
+
+          {ocrError && (
+            <div className="flex items-center gap-2 p-3 rounded-xl bg-amber-50 dark:bg-amber-600/15 mb-4">
+              <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0" />
+              <span className="text-[11px] text-amber-700 dark:text-amber-300">{ocrError}</span>
             </div>
           )}
 
