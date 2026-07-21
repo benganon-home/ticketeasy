@@ -1,0 +1,175 @@
+rules_version = '2';
+
+// TicketEasy Firestore security rules.
+// Trust model: rules DENY integrity-bearing writes; Cloud Functions (Admin SDK)
+// are the only door for money/status/reputation/bans. Client keeps reads +
+// low-risk writes (profile fields, listings, chat).
+//
+// Phase 1a (current): profile/listing/conversation/message locked; transactions
+// still client-creatable (constrained) because BuyPage writes them directly.
+// Phase 1b (ships with the createTransaction Cloud Function): flip the
+// transactions `create/update` rules to `false` — see the marked block below.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---- helpers ----
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.admin == true;
+    }
+    function incoming() { return request.resource.data; }
+    function current()  { return resource.data; }
+    // only the listed keys changed between current and incoming
+    function onlyChanged(keys) {
+      return incoming().diff(current()).affectedKeys().hasOnly(keys);
+    }
+
+    // ---- users/{uid} ----
+    // Profiles are visible to signed-in users (counterparties see names/ratings).
+    // Reputation + trust fields are SERVER-ONLY (Admin SDK bypasses rules).
+    match /users/{uid} {
+      allow get: if isSignedIn();
+      allow list: if isAdmin();
+
+      allow create: if isOwner(uid)
+        && incoming().uid == uid
+        && incoming().rating == null
+        && incoming().ratingCount == 0
+        && incoming().salesCount == 0
+        && incoming().purchasesCount == 0
+        && !('admin' in incoming())
+        && !('banned' in incoming());
+
+      // Users may only edit presentation fields. rating/counts/verified/
+      // banned/admin are never client-writable.
+      allow update: if isOwner(uid)
+        && onlyChanged(['name', 'photoURL', 'phone', 'updatedAt']);
+
+      allow delete: if false;
+    }
+
+    // ---- events/{id} ----
+    // Public catalog; written only by the seed script / admin functions.
+    match /events/{eventId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // ---- listings/{id} ----
+    // Public to browse. Seller-owned writes, price capped at face value,
+    // client can never mark a listing 'sold' (only the txn function does).
+    match /listings/{listingId} {
+      allow read: if true;
+
+      // Price cap = 20% over the listing's declared face value (matches the
+      // client). Phase 2's createTransaction re-validates authoritatively
+      // against the event doc's originalPrice server-side.
+      allow create: if isSignedIn()
+        && incoming().sellerId == request.auth.uid
+        && incoming().status == 'active'
+        && incoming().price is number
+        && incoming().price > 0
+        && incoming().originalPrice is number
+        && incoming().price <= incoming().originalPrice * 1.2;
+
+      allow update: if isSignedIn()
+        && current().sellerId == request.auth.uid
+        && current().status == 'active'
+        && onlyChanged(['price', 'seats', 'row', 'section', 'notes', 'status', 'updatedAt'])
+        && incoming().status in ['active', 'cancelled']
+        && incoming().price is number
+        && incoming().price > 0
+        && incoming().price <= current().originalPrice * 1.2;
+
+      allow delete: if false; // use status: 'cancelled' to preserve audit trail
+    }
+
+    // ---- transactions/{id} ----
+    // Buyer/seller/admin can read their own. Ticket payload lives in the
+    // private/ticket subcollection, readable by NO client.
+    match /transactions/{txnId} {
+      allow read: if isSignedIn() && (
+        current().buyerId == request.auth.uid ||
+        current().sellerId == request.auth.uid ||
+        isAdmin()
+      );
+      allow list: if isAdmin();
+
+      // >>> PHASE 1b CUTOVER: replace the two rules below with `if false` when
+      // the createTransaction Cloud Function ships. Until then, constrain the
+      // client create so identity/status can't be forged.
+      allow create: if isSignedIn()
+        && incoming().buyerId == request.auth.uid
+        && incoming().buyerId != incoming().sellerId
+        && incoming().status == 'pending_payment';
+      allow update: if false; // status transitions only via Cloud Functions
+      // <<< END PHASE 1b CUTOVER
+
+      allow delete: if false;
+
+      match /private/{docId} {
+        allow read, write: if false; // signed-URL delivery only, server-side
+      }
+    }
+
+    // ---- disputes/{id} ---- (server-write only)
+    match /disputes/{disputeId} {
+      allow read: if isSignedIn() && (
+        current().buyerId == request.auth.uid ||
+        current().sellerId == request.auth.uid ||
+        isAdmin()
+      );
+      allow write: if false;
+    }
+
+    // ---- auditLogs/{id} ---- (server only, no client access)
+    match /auditLogs/{logId} {
+      allow read, write: if false;
+    }
+
+    // ---- conversations/{id} + messages ----
+    match /conversations/{convoId} {
+      allow get, list: if isSignedIn()
+        && request.auth.uid in current().participants;
+
+      allow create: if isSignedIn()
+        && incoming().participants.size() == 2
+        && request.auth.uid in incoming().participants;
+
+      allow update: if isSignedIn()
+        && request.auth.uid in current().participants
+        && onlyChanged(['lastMessage', 'lastMessageAt', 'lastSenderId']);
+
+      allow delete: if false;
+
+      match /messages/{messageId} {
+        function convo() {
+          return get(/databases/$(database)/documents/conversations/$(convoId)).data;
+        }
+        allow read: if isSignedIn() && request.auth.uid in convo().participants;
+
+        allow create: if isSignedIn()
+          && request.auth.uid in convo().participants
+          && incoming().senderId == request.auth.uid
+          && incoming().text is string
+          && incoming().text.size() > 0
+          && incoming().text.size() <= 2000;
+
+        // Only the recipient may flip `read` to true.
+        allow update: if isSignedIn()
+          && request.auth.uid in convo().participants
+          && current().senderId != request.auth.uid
+          && onlyChanged(['read'])
+          && incoming().read == true;
+
+        allow delete: if false;
+      }
+    }
+  }
+}

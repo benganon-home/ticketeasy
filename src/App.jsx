@@ -21,7 +21,6 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from './firebase';
 import { getOrCreateUser } from './services/users';
-import { seedEvents } from './services/seed';
 import Header from './components/layout/Header';
 import BottomNav from './components/layout/BottomNav';
 import HomePage from './components/home/HomePage';
@@ -75,7 +74,6 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(true);
 
   useEffect(() => {
-    seedEvents().catch(() => {});
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         const profile = await getOrCreateUser(firebaseUser).catch(() => ({}));

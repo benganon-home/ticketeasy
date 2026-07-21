@@ -1,0 +1,35 @@
+rules_version = '2';
+
+// TicketEasy Storage rules.
+// Ticket assets (barcodes/PDFs) are write-once by the seller and readable by
+// NO client — they are delivered to the buyer only via a short-lived signed URL
+// minted server-side by the revealTicket Cloud Function after escrow reveal.
+// User avatars are the only publicly readable path.
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Ticket assets: seller uploads once, nobody reads directly.
+    match /tickets/{listingId}/{fileName} {
+      allow read: if false;
+      allow create: if request.auth != null
+        && request.resource.size < 10 * 1024 * 1024
+        && (request.resource.contentType.matches('image/.*')
+            || request.resource.contentType == 'application/pdf');
+      allow update, delete: if false;
+    }
+
+    // User avatars: public read, owner-only write.
+    match /avatars/{uid}/{fileName} {
+      allow read: if true;
+      allow write: if request.auth != null
+        && request.auth.uid == uid
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
