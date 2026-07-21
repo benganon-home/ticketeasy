@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router';
-import { useTheme } from '../../App';
-import { Bell, Moon, Sun, Shield } from 'lucide-react';
+import { useAuth } from '../../App';
+import { Bell, Shield, User } from 'lucide-react';
 
 export default function Header() {
-  const { darkMode, toggleDark } = useTheme();
+  const { user } = useAuth();
   const [notifCount] = useState(3);
 
   return (
@@ -37,18 +37,20 @@ export default function Header() {
             )}
           </Link>
 
-          {/* Dark mode toggle */}
-          <button
-            onClick={toggleDark}
-            className="p-2 rounded-xl hover:bg-dark-50 dark:hover:bg-dark-700 transition-colors"
-            aria-label={darkMode ? 'מצב בהיר' : 'מצב כהה'}
+          {/* User / profile */}
+          <Link
+            to={user ? '/profile' : '/auth'}
+            className="p-1.5 rounded-xl hover:bg-dark-50 transition-colors"
+            aria-label={user ? 'הפרופיל שלי' : 'התחברות'}
           >
-            {darkMode ? (
-              <Sun className="w-5 h-5 text-amber-400" />
+            {user?.photoURL ? (
+              <img src={user.photoURL} alt="" className="w-7 h-7 rounded-full object-cover" />
             ) : (
-              <Moon className="w-5 h-5 text-primary-500" />
+              <span className="w-7 h-7 rounded-full bg-primary-50 flex items-center justify-center">
+                <User className="w-4 h-4 text-primary-500" />
+              </span>
             )}
-          </button>
+          </Link>
         </div>
       </div>
     </header>

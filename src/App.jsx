@@ -75,14 +75,9 @@ function AdminRoute({ children }) {
 }
 
 export default function App() {
-  const [darkMode, setDarkMode] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('te-dark-mode');
-      if (saved !== null) return JSON.parse(saved);
-      return window.matchMedia('(prefers-color-scheme: dark)').matches;
-    }
-    return true;
-  });
+  // Light mode only for now. The dark-mode toggle will return in Settings;
+  // until then the app is forced light and the theme context stays intact.
+  const [darkMode, setDarkMode] = useState(false);
 
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
