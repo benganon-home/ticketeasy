@@ -1,42 +1,98 @@
-import React, { useState } from 'react';
-import { BarChart3, Users, AlertTriangle, ShieldOff, TrendingUp, Ban } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { AlertTriangle, Ban, AlertCircle } from 'lucide-react';
+import { collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
+import { db } from '../../firebase';
+import { resolveDispute, banUser } from '../../services/functions';
+import { formatPrice } from '../../data/mockData';
 
 export default function AdminPage() {
-  const [tab, setTab] = useState('overview');
-  const stats = [{label:'עסקאות היום',value:'47',icon:BarChart3,trend:'+12%'},{label:'משתמשים חדשים',value:'23',icon:Users,trend:'+8%'},{label:'מחלוקות פתוחות',value:'3',icon:AlertTriangle,trend:'-2'},{label:'ספסרנים שנחסמו',value:'5',icon:ShieldOff,trend:'+1'}];
-  const disputes = [
-    {id:1,buyer:'דנה לוי',seller:'אבי מזרחי',event:'מכבי ת"א vs הפועל ב"ש',reason:'כרטיס לא עבד',status:'פתוח',amount:'₪130'},
-    {id:2,buyer:'נועם ברק',seller:'מיכל אברהם',event:'עידן רייכל',reason:'פרטים לא תואמים',status:'בבדיקה',amount:'₪350'},
-  ];
+  const [disputes, setDisputes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState(null);
+  const [error, setError] = useState(null);
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      const snap = await getDocs(query(
+        collection(db, 'disputes'),
+        where('status', '==', 'open'),
+        orderBy('createdAt', 'desc'),
+        limit(50),
+      ));
+      setDisputes(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    } catch (err) {
+      setError(err?.message || 'לא ניתן לטעון מחלוקות.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const resolve = async (disputeId, resolution) => {
+    const note = window.prompt(resolution === 'refund' ? 'הערת פתרון (החזר לקונה):' : 'הערת פתרון (שחרור למוכר):');
+    if (!note) return;
+    setBusyId(disputeId); setError(null);
+    try {
+      await resolveDispute({ disputeId, resolution, note });
+      await load();
+    } catch (err) {
+      setError(err?.message || 'הפעולה נכשלה.');
+    } finally { setBusyId(null); }
+  };
+
+  const ban = async (uid) => {
+    if (!window.confirm('לחסום את המוכר?')) return;
+    setError(null);
+    try {
+      await banUser({ uid, banned: true });
+    } catch (err) {
+      setError(err?.message || 'החסימה נכשלה.');
+    }
+  };
 
   return (
     <div>
       <h1 className="font-800 text-xl mb-4">פאנל ניהול</h1>
-      <div className="grid grid-cols-2 gap-3 mb-6">
-        {stats.map(({label,value,icon:Icon,trend})=>(
-          <div key={label} className="card-flat">
-            <div className="flex items-center justify-between mb-2"><Icon className="w-4 h-4 text-primary-500" /><span className="text-[10px] text-success-500 font-600">{trend}</span></div>
-            <p className="font-800 text-xl">{value}</p>
-            <p className="text-[10px] text-dark-300">{label}</p>
-          </div>
-        ))}
-      </div>
 
-      <h2 className="font-700 text-base mb-3 flex items-center gap-2"><AlertTriangle className="w-4 h-4 text-danger-400" />מחלוקות פתוחות</h2>
-      <div className="space-y-3">
-        {disputes.map(d=>(
-          <div key={d.id} className="card-flat">
-            <div className="flex items-center justify-between mb-2"><span className="font-600 text-sm">{d.event}</span><span className="badge-danger text-[10px]">{d.status}</span></div>
-            <p className="text-xs text-dark-400 mb-1">קונה: {d.buyer} · מוכר: {d.seller}</p>
-            <p className="text-xs text-dark-400 mb-2">סיבה: {d.reason} · סכום: {d.amount}</p>
-            <div className="flex gap-2">
-              <button className="btn-success text-xs py-1.5 flex-1">החזר לקונה</button>
-              <button className="btn-secondary text-xs py-1.5 flex-1">שחרר למוכר</button>
-              <button className="p-1.5 rounded-lg bg-danger-50 dark:bg-danger-700/20"><Ban className="w-4 h-4 text-danger-500" /></button>
+      {error && (
+        <div className="flex items-center gap-2 p-3 rounded-xl bg-red-50 dark:bg-red-900/20 mb-4">
+          <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+          <span className="text-[11px] text-red-600 dark:text-red-300">{error}</span>
+        </div>
+      )}
+
+      <h2 className="font-700 text-base mb-3 flex items-center gap-2">
+        <AlertTriangle className="w-4 h-4 text-danger-400" />
+        מחלוקות פתוחות {disputes.length > 0 && `(${disputes.length})`}
+      </h2>
+
+      {loading ? (
+        <div className="flex items-center justify-center h-32">
+          <div className="w-8 h-8 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
+        </div>
+      ) : disputes.length === 0 ? (
+        <div className="card-flat text-center text-sm text-dark-400 py-8">אין מחלוקות פתוחות.</div>
+      ) : (
+        <div className="space-y-3">
+          {disputes.map((d) => (
+            <div key={d.id} className="card-flat">
+              <div className="flex items-center justify-between mb-2">
+                <span className="font-600 text-sm">עסקה {d.txnId?.slice(0, 6)}</span>
+                <span className="badge-danger text-[10px]">פתוח</span>
+              </div>
+              <p className="text-xs text-dark-400 mb-1">קונה: {d.buyerId?.slice(0, 8)} · מוכר: {d.sellerId?.slice(0, 8)}</p>
+              <p className="text-xs text-dark-400 mb-2">סיבה: {d.reason}</p>
+              <div className="flex gap-2">
+                <button onClick={() => resolve(d.id, 'refund')} disabled={busyId === d.id} className="btn-success text-xs py-1.5 flex-1 disabled:opacity-40">החזר לקונה</button>
+                <button onClick={() => resolve(d.id, 'release')} disabled={busyId === d.id} className="btn-secondary text-xs py-1.5 flex-1 disabled:opacity-40">שחרר למוכר</button>
+                <button onClick={() => ban(d.sellerId)} className="p-1.5 rounded-lg bg-danger-50 dark:bg-danger-700/20" title="חסום מוכר"><Ban className="w-4 h-4 text-danger-500" /></button>
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -60,6 +60,20 @@ function ProtectedRoute({ children }) {
   return children;
 }
 
+// Client-side admin gate (UX only; the real gate is assertAdmin in every
+// admin Cloud Function + isAdmin() in Firestore rules).
+function AdminRoute({ children }) {
+  const { user, authLoading } = useAuth();
+  if (authLoading) return (
+    <div className="flex items-center justify-center h-64">
+      <div className="w-8 h-8 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+  if (!user) return <Navigate to="/auth" replace />;
+  if (!user.isAdmin) return <Navigate to="/" replace />;
+  return children;
+}
+
 export default function App() {
   const [darkMode, setDarkMode] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -76,7 +90,10 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        const profile = await getOrCreateUser(firebaseUser).catch(() => ({}));
+        const [profile, tokenResult] = await Promise.all([
+          getOrCreateUser(firebaseUser).catch(() => ({})),
+          firebaseUser.getIdTokenResult().catch(() => ({ claims: {} })),
+        ]);
         setUser({
           id: firebaseUser.uid,
           name: firebaseUser.displayName || profile.name || firebaseUser.email?.split('@')[0] || 'משתמש',
@@ -87,6 +104,7 @@ export default function App() {
           ratingCount: profile.ratingCount,
           salesCount: profile.salesCount,
           purchasesCount: profile.purchasesCount,
+          isAdmin: tokenResult.claims?.admin === true,
           isLoggedIn: true,
         });
       } else {
@@ -134,7 +152,7 @@ export default function App() {
                         <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
                         <Route path="/messages" element={<ProtectedRoute><MessagingPage /></ProtectedRoute>} />
                         <Route path="/disputes" element={<ProtectedRoute><DisputesPage /></ProtectedRoute>} />
-                        <Route path="/admin" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
+                        <Route path="/admin" element={<AdminRoute><AdminPage /></AdminRoute>} />
                       </Routes>
                     </main>
                     <BottomNav />
